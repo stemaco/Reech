@@ -83,65 +83,33 @@ class DiaryWriterService {
 
   private async updateDiaryContent(existingContent: string, newConversations: any[]): Promise<string> {
     try {
-      const conversationTexts = newConversations.map(conv => conv.text).join(' ');
-      
-      console.log('=== UPDATING DIARY CONTENT ===');
-      console.log('Existing content:', existingContent);
-      console.log('New conversations:', conversationTexts);
-      
-      const prompt = `I have an existing diary entry and some new conversations to add to it. Please update the diary entry by naturally incorporating the new conversations into the existing paragraph, making it flow well and feel like one cohesive entry.
-
-Existing diary entry:
-"${existingContent}"
-
-New conversations to add:
-"${conversationTexts}"
-
-Please rewrite the diary entry to include the new information. Keep it casual, simple, and human - like a real person talking about their day. No fancy words or literary style. Make it feel like one continuous, natural diary entry.
-
-IMPORTANT: Do NOT mention Reech, AI, chatbot, or any AI assistant in the diary entry. Write it as if the person is talking about their own experiences and thoughts, not about chatting with an AI.`;
-
-      console.log('Sending request to OpenAI...');
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/diary-update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a casual diary writer. Update existing diary entries by naturally incorporating new conversations into the existing content. Keep it simple, conversational, and human - like a real person talking about their day. No fancy words or literary style. NEVER mention Reech, AI, chatbot, or any AI assistant in the diary entries.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 400,
-          temperature: 0.7
+          existingContent,
+          newConversations
         })
       });
 
-      console.log('OpenAI response status:', response.status);
-
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('OpenAI API error:', response.status, errorText);
-        throw new Error(`OpenAI API error: ${response.status}`);
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
-      const updatedContent = data.choices[0]?.message?.content || existingContent;
-      console.log('OpenAI returned updated content:', updatedContent);
-      return updatedContent;
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      return data.content || existingContent;
+
     } catch (error) {
       console.error('Error updating diary content:', error);
       // Fallback: just append new conversations
       const fallbackContent = `${existingContent}\n\nLater, I also thought about: ${newConversations.map(conv => conv.text).join('. ')}.`;
-      console.log('Using fallback content:', fallbackContent);
       return fallbackContent;
     }
   }
@@ -232,72 +200,35 @@ IMPORTANT: Do NOT mention Reech, AI, chatbot, or any AI assistant in the diary e
 
   private async generateDiaryContent(conversations: any[], mood: string, topics: string[], highlights: string[]): Promise<{title: string, content: string}> {
     try {
-      const conversationSummary = conversations.map(conv => conv.text).join(' ');
-      const topicsStr = topics.join(', ');
-      const highlightsStr = highlights.join(' | ');
-
-      const prompt = `Write a casual, human diary entry based on these conversations:
-
-Date: ${conversations[0]?.date || 'Today'}
-Mood: ${mood}
-Topics discussed: ${topicsStr}
-Key highlights: ${highlightsStr}
-
-Conversations: ${conversationSummary}
-
-Please write:
-1. A simple, casual title for the day
-2. A short, natural diary entry that sounds like a real person wrote it. Keep it simple, conversational, and human. No fancy words or literary style - just like someone talking about their day to a friend.
-
-IMPORTANT: Do NOT mention Reech, AI, chatbot, or any AI assistant in the diary entry. Write it as if the person is talking about their own experiences and thoughts, not about chatting with an AI.
-
-Format as JSON:
-{
-  "title": "Simple title here",
-  "content": "Casual diary entry here"
-}`;
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('/api/diary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a casual diary writer. Write simple, human diary entries based on conversations. Keep it conversational and natural - like a real person talking about their day. No fancy words or literary style. NEVER mention Reech, AI, chatbot, or any AI assistant in the diary entries. Always respond with valid JSON.'
-            },
-            {
-              role: 'user',
-              content: prompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
+          conversations,
+          mood,
+          topics,
+          highlights,
+          date: conversations[0]?.date || 'Today'
         })
       });
 
       if (!response.ok) {
-        throw new Error('OpenAI API error');
+        throw new Error(`API error: ${response.status}`);
       }
 
       const data = await response.json();
-      const content = data.choices[0]?.message?.content;
       
-      if (content) {
-        try {
-          return JSON.parse(content);
-        } catch {
-          // Fallback if JSON parsing fails
-          return {
-            title: `A ${mood} Day`,
-            content: content
-          };
-        }
+      if (data.error) {
+        throw new Error(data.error);
       }
+
+      return {
+        title: data.title || `A ${mood} Day`,
+        content: data.content || 'Had a good day today.'
+      };
+
     } catch (error) {
       console.error('Error generating diary content:', error);
     }
